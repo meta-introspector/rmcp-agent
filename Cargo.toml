@@ -8,6 +8,7 @@ license = "MIT"
 keywords = ["mcp", "rmcp", "agent", "langchain", "sse"]
 repository = "https://github.com/ZBcheng/rmcp-agent"
 readme = "README.md"
+exclude = ["examples/*"]
 
 [dependencies]
 async-stream = "0.3.6"
