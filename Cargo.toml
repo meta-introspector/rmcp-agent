@@ -1,7 +1,13 @@
 [package]
 name = "rmcp-agent"
 version = "0.1.0"
+description = "A library that extends langchain-rust with support for Model Context Protocol (MCP) tool integration and streaming tool execution capabilities."
+authors = ["bee0_0@icloud.com"]
 edition = "2024"
+license = "MIT"
+keywords = ["mcp", "rmcp", "agent", "langchain", "sse"]
+repository = "https://github.com/ZBcheng/rmcp-agent"
+readme = "README.md"
 
 [dependencies]
 async-stream = "0.3.6"
