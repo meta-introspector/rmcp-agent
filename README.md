@@ -8,10 +8,6 @@ A powerful Rust library that extends [langchain-rust](https://github.com/Abraxas
 - **⚡ RMCP Tool Integration**: Native support for Model Context Protocol (MCP) tools via SSE transport, enabling AI agents to interact with mathematical calculations and custom services
 - **🌊 Streaming Tool Execution**: Real-time streaming of tool execution results with detailed progress tracking and error handling
 - **🔧 Flexible Agent Builder**: Easy-to-use builder pattern for constructing agents with custom instructions and tool configurations
-- **🎯 OpenAI Compatible**: Optimized for OpenAI models with streaming tool calling support
-- **📊 Built-in Mathematical Tools**: Includes demonstration tools for addition, subtraction, and factorial calculations
-- **🚦 Anti-Repetition Control**: Advanced prompt engineering to prevent redundant tool calls and ensure efficient execution
-- **📋 Comprehensive Logging**: Detailed logging and monitoring of tool execution with result summaries
 
 ## Quick Start
 
@@ -257,40 +253,6 @@ let agent_builder = OpenAIMcpAgentBuilder::new(api_key, api_base, model)
     .prefix(prefix);
 ```
 
-### Tool Type Safety
-
-The library emphasizes type safety for tool parameters:
-
-```rust
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-struct FactorialRequest {
-    #[schemars(description = "Positive integer to calculate factorial for (1-20). MUST be integer type, not float or string")]
-    n: i32,
-}
-```
-
-### Streaming Configuration with Error Handling
-
-```rust
-let executor = OpenAIMcpAgentExecutor::new(Arc::new(agent), model)
-    .with_max_iterations(10)          // Maximum reasoning iterations
-    .with_break_if_error(true);       // Stop on first error
-
-// Execute with comprehensive error handling
-let stream = executor.stream(input_variables).await?;
-while let Some(chunk) = stream.next().await {
-    match chunk {
-        Ok(data) => {
-            // Process successful streaming data
-        }
-        Err(e) => {
-            eprintln!("Tool execution error: {}", e);
-            break;
-        }
-    }
-}
-```
-
 ### Real-time Tool Monitoring
 
 The library provides detailed real-time feedback:
@@ -341,4 +303,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Built on top of [langchain-rust](https://github.com/Abraxas-365/langchain-rust)
 - Powered by [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol)
-- Inspired by the need for better streaming tool integration in Rust AI applications
