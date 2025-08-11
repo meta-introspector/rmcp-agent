@@ -70,18 +70,8 @@ impl OpenAIMcpAgent {
         // Handle tool calls
         if let Some(_tool_calls) = delta.get("tool_calls").and_then(|tc| tc.as_array()) {
             *has_tool_calls = true;
-            tool_call_acc.accumulate(delta);
-
-            let accumulated = tool_call_acc.get_accumulated().unwrap_or_else(|| {
-                tracing::warn!("No tool call found");
-                AgentAction {
-                    tool: String::default(),
-                    tool_input: String::default(),
-                    log: String::default(),
-                }
-            });
-
-            events.push(AgentEventChunk::Delta(DeltaEvent::Action(accumulated)));
+            let tool_call_chunk = tool_call_acc.accumulate(delta);
+            events.push(AgentEventChunk::Delta(DeltaEvent::Action(tool_call_chunk)));
         } else if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
             if !content.is_empty() {
                 model_output.push_str(content);
@@ -113,21 +103,13 @@ impl OpenAIMcpAgent {
     ) -> AgentEvent {
         match finish_reason {
             "tool_calls" => {
-                if let Some(action) = tool_call_acc.take_action() {
-                    AgentEvent::Action(vec![action])
-                } else {
-                    AgentEvent::Finish(AgentFinish {
-                        output: model_output.to_string(),
-                    })
-                }
+                let action = tool_call_acc.take_action();
+                AgentEvent::Action(vec![action])
             }
             "stop" => {
                 if has_tool_calls {
-                    let mut actions = vec![];
-                    if let Some(action) = tool_call_acc.take_action() {
-                        actions.push(action);
-                    }
-                    AgentEvent::Action(actions)
+                    let action = tool_call_acc.take_action();
+                    AgentEvent::Action(vec![action])
                 } else {
                     AgentEvent::Finish(AgentFinish {
                         output: model_output.to_string(),
@@ -255,11 +237,8 @@ impl AgentExt for OpenAIMcpAgent {
 
             match has_tool_calls {
                 true => {
-                    if let Some(action) = tool_call_acc.take_action() {
-                        yield Ok(AgentEventChunk::Final(AgentEvent::Action(vec![action])))
-                    } else {
-                        yield Ok(AgentEventChunk::Final(AgentEvent::Finish(AgentFinish { output: model_output })))
-                    };
+                    let action = tool_call_acc.take_action();
+                    yield Ok(AgentEventChunk::Final(AgentEvent::Action(vec![action])))
                 },
                 false => yield Ok(AgentEventChunk::Final(AgentEvent::Finish(AgentFinish { output: model_output })))
             }
@@ -284,102 +263,70 @@ impl ToolCallAccumulator {
         }
     }
 
-    fn accumulate(&mut self, delta: &serde_json::Value) {
-        if let Some(tool_calls) = delta.get("tool_calls").and_then(|v| v.as_array()) {
-            for tool_call in tool_calls {
-                if let Some(function) = tool_call.get("function") {
-                    if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
-                        self.name = Some(name.to_string());
-                    }
-                    if let Some(args) = function.get("arguments").and_then(|a| a.as_str()) {
-                        self.args.push_str(args);
-                    }
+    fn accumulate(&mut self, delta: &serde_json::Value) -> AgentAction {
+        let mut args_chunk = String::default();
+
+        if let Some(tool_call) = delta
+            .get("tool_calls")
+            .and_then(|v| v.as_array())
+            .and_then(|v| v.get(0))
+        {
+            if let Some(function) = tool_call.get("function") {
+                if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
+                    self.name = Some(name.to_string());
                 }
-                if let Some(id) = tool_call.get("id").and_then(|i| i.as_str()) {
-                    if !id.is_empty() {
-                        self.id = Some(id.to_string());
-                    }
+                if let Some(args) = function.get("arguments").and_then(|a| a.as_str()) {
+                    self.args.push_str(args);
+                    args_chunk = args.to_string();
                 }
             }
-        }
+            if let Some(id) = tool_call.get("id").and_then(|i| i.as_str()) {
+                if !id.is_empty() {
+                    self.id = Some(id.to_string());
+                }
+            }
+        };
+
+        self.to_action_chunk(args_chunk)
     }
 
-    fn get_accumulated(&self) -> Option<AgentAction> {
-        if let (Some(name), Some(id)) = (&self.name, &self.id) {
-            // Construct log format consistent with non-streaming method
-            let function_call_response = serde_json::json!({
-                "id": id.clone(),
-                "type": "function",
-                "function": {
-                    "name": name.clone(),
-                    "arguments": self.args.clone()
-                }
-            });
-
-            // Construct tool call array (consistent with non-streaming method)
-            let tools_array = serde_json::json!([function_call_response]);
-            let tools_output = serde_json::to_string(&tools_array).unwrap_or_else(|_| {
-                format!("[{{\"error\": \"Failed to serialize function call\"}}]")
-            });
-
-            let log_tools = LogTools {
-                tool_id: id.clone(),
-                tools: tools_output,
-            };
-
-            let log_str = serde_json::to_string(&log_tools).unwrap_or_else(|_| {
-                // If serialization fails, return a simple format
-                format!("{{\"tool_id\": \"{}\", \"tools\": \"[]\"}}", id.clone())
-            });
-
-            Some(AgentAction {
-                tool: name.clone(),
-                tool_input: self.args.clone(),
-                log: log_str,
-            })
-        } else {
-            None
-        }
+    fn take_action(&mut self) -> AgentAction {
+        let args = std::mem::take(&mut self.args);
+        self.to_action_chunk(args)
     }
 
-    fn take_action(&mut self) -> Option<AgentAction> {
-        if let (Some(name), Some(id)) = (self.name.take(), self.id.take()) {
-            let args = std::mem::take(&mut self.args);
+    fn to_action_chunk(&self, args_chunk: String) -> AgentAction {
+        let function_call_response = serde_json::json!({
+            "id": self.id.clone(),
+            "type": "function",
+            "function": {
+                "name": self.name.clone(),
+                "arguments": args_chunk
+            }
+        });
 
-            // Construct log format consistent with non-streaming method
-            // Note: Here we need to construct a JSON string of FunctionCallResponse array
-            let function_call_response = serde_json::json!({
-                "id": id,
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": args
-                }
-            });
+        // Construct tool call array (consistent with non-streaming method)
+        let tools_array = serde_json::json!([function_call_response]);
+        let tools_output = serde_json::to_string(&tools_array)
+            .unwrap_or_else(|_| format!("[{{\"error\": \"Failed to serialize function call\"}}]"));
 
-            // Construct tool call array (consistent with non-streaming method)
-            let tools_array = serde_json::json!([function_call_response]);
-            let tools_output = serde_json::to_string(&tools_array).unwrap_or_else(|_| {
-                format!("[{{\"error\": \"Failed to serialize function call\"}}]")
-            });
+        let log_tools = LogTools {
+            tool_id: self.id.clone().unwrap_or_default(),
+            tools: tools_output,
+        };
 
-            let log_tools = LogTools {
-                tool_id: id.clone(),
-                tools: tools_output,
-            };
+        let log_str = serde_json::to_string(&log_tools).unwrap_or_else(|_| {
+            // If serialization fails, return a simple format
+            format!(
+                "{{\"tool_id\": \"{}\", \"tools\": \"[]\"}}",
+                self.id.clone().unwrap_or_default()
+            )
+        });
 
-            let log_str = serde_json::to_string(&log_tools).unwrap_or_else(|_| {
-                // If serialization fails, return a simple format
-                format!("{{\"tool_id\": \"{}\", \"tools\": \"[]\"}}", id)
-            });
-
-            Some(AgentAction {
-                tool: name.clone(),
-                tool_input: args,
-                log: log_str,
-            })
-        } else {
-            None
+        AgentAction {
+            tool: self.name.clone().unwrap_or_default(),
+            tool_input: args_chunk,
+            log: log_str,
         }
     }
 }
