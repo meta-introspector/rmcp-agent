@@ -59,7 +59,7 @@ impl OpenAIMcpAgent {
             return events;
         };
 
-        let Some(choice) = choices.get(0) else {
+        let Some(choice) = choices.first() else {
             return events;
         };
 
@@ -203,7 +203,7 @@ impl AgentExt for OpenAIMcpAgent {
         use futures_util::StreamExt;
 
         let mut inputs = inputs.clone();
-        let scratchpad = self.construct_scratchpad(&steps)?;
+        let scratchpad = self.construct_scratchpad(steps)?;
         inputs.insert("agent_scratchpad".to_string(), json!(scratchpad));
 
         let mut chain_stream = self.chain.stream(inputs).await?;
@@ -269,7 +269,7 @@ impl ToolCallAccumulator {
         if let Some(tool_call) = delta
             .get("tool_calls")
             .and_then(|v| v.as_array())
-            .and_then(|v| v.get(0))
+            .and_then(|v| v.first())
         {
             if let Some(function) = tool_call.get("function") {
                 if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
@@ -307,8 +307,9 @@ impl ToolCallAccumulator {
 
         // Construct tool call array (consistent with non-streaming method)
         let tools_array = serde_json::json!([function_call_response]);
-        let tools_output = serde_json::to_string(&tools_array)
-            .unwrap_or_else(|_| format!("[{{\"error\": \"Failed to serialize function call\"}}]"));
+        let tools_output = serde_json::to_string(&tools_array).unwrap_or_else(|_| {
+            "[{{\"error\": \"Failed to serialize function call\"}}]".to_string()
+        });
 
         let log_tools = LogTools {
             tool_id: self.id.clone().unwrap_or_default(),

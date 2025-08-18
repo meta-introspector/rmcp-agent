@@ -159,7 +159,7 @@ async fn print_stream(
         match chunk {
             Ok(stream_data) => {
                 if let Some(choices) = stream_data.value.get("choices").and_then(|c| c.as_array()) {
-                    if let Some(choice) = choices.get(0) {
+                    if let Some(choice) = choices.first() {
                         if let Some(delta) = choice.get("delta") {
                             if let Some(tool_calls) =
                                 delta.get("tool_calls").and_then(|tc| tc.as_array())
@@ -201,7 +201,7 @@ async fn print_stream(
                                             if is_new_tool_call && !name.is_empty() {
                                                 stdout
                                                     .write_all(
-                                                        format!("\n\n🏗️  {} calling...\n", name)
+                                                        format!("\n\n🏗️  {name} calling...\n")
                                                             .as_bytes(),
                                                     )
                                                     .await
@@ -238,8 +238,7 @@ async fn print_stream(
                                 stdout
                                     .write_all(
                                         format!(
-                                            "\n🚨 Error: {}\n Tool call id: {tool_call_id}, {tool_name}",
-                                            error
+                                            "\n🚨 Error: {error}\n Tool call id: {tool_call_id}, {tool_name}",
                                         )
                                         .as_bytes(),
                                     )
@@ -270,7 +269,7 @@ async fn print_stream(
                                                 json_val.get("status").and_then(|s| s.as_str())
                                             {
                                                 if let Some(result) = json_val.get("result") {
-                                                    format!("{} ({})", result, status)
+                                                    format!("{result} ({status})")
                                                 } else {
                                                     status.to_string()
                                                 }
@@ -284,8 +283,7 @@ async fn print_stream(
                                         stdout
                                             .write_all(
                                                 format!(
-                                                    "\n🔧 Tool executed: {} \n💡 Result: {}\n",
-                                                    name, display_result
+                                                    "\n🔧 Tool executed: {name} \n💡 Result: {display_result}\n",
                                                 )
                                                 .as_bytes(),
                                             )
@@ -307,16 +305,12 @@ async fn print_stream(
                                             .unwrap();
                                         if let Some(name) = name {
                                             stdout
-                                                .write_all(
-                                                    format!("   Tool: {}\n", name).as_bytes(),
-                                                )
+                                                .write_all(format!("   Tool: {name}\n").as_bytes())
                                                 .await
                                                 .unwrap();
                                         }
                                         stdout
-                                            .write_all(
-                                                format!("   Result: {}\n", parsed).as_bytes(),
-                                            )
+                                            .write_all(format!("   Result: {parsed}\n").as_bytes())
                                             .await
                                             .unwrap();
                                     }
@@ -332,15 +326,13 @@ async fn print_stream(
                                 for (tool_id, (name, args)) in &tool_call_states {
                                     if !name.is_empty() && !printed_tool_calls.contains(tool_id) {
                                         stdout
-                                            .write_all(
-                                                format!("🔧 Tool call: {}\n", name).as_bytes(),
-                                            )
+                                            .write_all(format!("🔧 Tool call: {name}\n").as_bytes())
                                             .await
                                             .unwrap();
 
                                         stdout
                                             .write_all(
-                                                format!("   🆔 Tool Call ID: {}\n", tool_id)
+                                                format!("   🆔 Tool Call ID: {tool_id}\n")
                                                     .as_bytes(),
                                             )
                                             .await
@@ -348,7 +340,7 @@ async fn print_stream(
 
                                         stdout
                                             .write_all(
-                                                format!("   📋 Arguments: {}\n", args).as_bytes(),
+                                                format!("   📋 Arguments: {args}\n").as_bytes(),
                                             )
                                             .await
                                             .unwrap();
@@ -384,7 +376,7 @@ async fn print_stream(
             }
             Err(e) => {
                 stdout
-                    .write_all(format!("❌ Streaming processing error: {}\n", e).as_bytes())
+                    .write_all(format!("❌ Streaming processing error: {e}\n").as_bytes())
                     .await
                     .unwrap();
                 break;

@@ -509,33 +509,31 @@ where
                                                 match serde_json::from_str::<LogTools>(&action.log)
                                                 {
                                                     Ok(LogTools { tool_id, tools }) => {
-                                                        match serde_json::from_str::<Value>(&tools)
+                                                        if let Ok(tools_value) =
+                                                            serde_json::from_str::<Value>(&tools)
                                                         {
-                                                            Ok(tools_value) => {
-                                                                if tools_ai_message_seen
-                                                                    .insert(tools, ())
-                                                                    .is_none()
-                                                                {
-                                                                    memory.add_message(
-                                                                        Message::new_ai_message("")
-                                                                            .with_tool_calls(
-                                                                                tools_value,
-                                                                            ),
-                                                                    );
-                                                                }
+                                                            if tools_ai_message_seen
+                                                                .insert(tools, ())
+                                                                .is_none()
+                                                            {
                                                                 memory.add_message(
-                                                                    Message::new_tool_message(
-                                                                        observation.clone(),
-                                                                        tool_id,
-                                                                    ),
+                                                                    Message::new_ai_message("")
+                                                                        .with_tool_calls(
+                                                                            tools_value,
+                                                                        ),
                                                                 );
                                                             }
-                                                            Err(e) => {
-                                                                tracing::warn!(
-                                                                    "Failed to parse tools JSON: {}",
-                                                                    e
-                                                                );
-                                                            }
+                                                            memory.add_message(
+                                                                Message::new_tool_message(
+                                                                    observation.clone(),
+                                                                    tool_id,
+                                                                ),
+                                                            );
+                                                        } else {
+                                                            tracing::warn!(
+                                                                "Failed to parse tools JSON: {}",
+                                                                tools
+                                                            );
                                                         }
                                                     }
                                                     Err(e) => {
@@ -575,31 +573,37 @@ where
                                                 match serde_json::from_str::<LogTools>(&action.log)
                                                 {
                                                     Ok(LogTools { tool_id, tools }) => {
-                                                        match serde_json::from_str::<Value>(&tools)
+                                                        if let Ok(tools_value) =
+                                                            serde_json::from_str::<Value>(&tools)
                                                         {
-                                                            Ok(tools_value) => {
-                                                                if tools_ai_message_seen
-                                                                    .insert(tools, ())
-                                                                    .is_none()
-                                                                {
-                                                                    memory.add_message(
-                                                                        Message::new_ai_message("")
-                                                                            .with_tool_calls(
-                                                                                tools_value,
-                                                                            ),
-                                                                    );
-                                                                }
+                                                            if tools_ai_message_seen
+                                                                .insert(tools, ())
+                                                                .is_none()
+                                                            {
                                                                 memory.add_message(
-                                                                    Message::new_tool_message(
-                                                                        observation.clone(),
-                                                                        tool_id,
-                                                                    ),
+                                                                    Message::new_ai_message("")
+                                                                        .with_tool_calls(
+                                                                            tools_value,
+                                                                        ),
                                                                 );
                                                             }
-                                                            Err(_) => {}
+                                                            memory.add_message(
+                                                                Message::new_tool_message(
+                                                                    observation.clone(),
+                                                                    tool_id,
+                                                                ),
+                                                            );
+                                                        } else {
+                                                            tracing::warn!(
+                                                                "Failed to parse tools JSON: {tools}"
+                                                            );
                                                         }
                                                     }
-                                                    Err(_) => {}
+                                                    Err(e) => {
+                                                        tracing::warn!(
+                                                            "Failed to parse action log: {e}"
+                                                        );
+                                                    }
                                                 }
                                             }
                                             memory.add_ai_message(&finish.output);
@@ -656,7 +660,6 @@ where
                     let memory = memory.lock().await;
                     let messages = memory.messages();
                     input_variables.insert("chat_history".to_string(), json!(messages));
-                    println!("history: {:?}", messages);
                 }
 
                 // Check max iterations before continuing

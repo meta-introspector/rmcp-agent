@@ -98,6 +98,12 @@ struct FactorialRequest {
     n: i32,
 }
 
+impl Default for McpDemoService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[tool_router]
 impl McpDemoService {
     pub fn new() -> Self {
