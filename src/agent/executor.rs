@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use futures_util::{Stream, lock::Mutex};
+use futures_util::Stream;
 use langchain_rust::agent::AgentError;
 use langchain_rust::chain::{Chain, ChainError};
 use langchain_rust::language_models::GenerateResult;
@@ -13,6 +13,7 @@ use langchain_rust::prompt::PromptArgs;
 use langchain_rust::schemas::{AgentAction, AgentEvent, BaseMemory, LogTools, Message, StreamData};
 use langchain_rust::tools::Tool;
 use serde_json::{Value, json};
+use tokio::sync::Mutex;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
@@ -225,7 +226,13 @@ where
         tokio::spawn(async move {
             use futures_util::StreamExt;
 
+            let mut accumulated_content = String::new();
+            let mut current_iteration_steps: Vec<(AgentAction, String)> = Vec::new();
+
             loop {
+                accumulated_content.clear();
+                current_iteration_steps.clear();
+
                 let mut plan_stream = match agent.plan_stream(&steps, input_variables.clone()).await
                 {
                     Ok(stream) => stream,
@@ -259,6 +266,8 @@ where
                             AgentEventChunk::Delta(event) => match event {
                                 DeltaEvent::Content(content) => {
                                     if !content.is_empty() {
+                                        accumulated_content.push_str(&content);
+
                                         let _ = tx.send(Ok(StreamData::new(
                                             json!({
                                                 "id": chat_completion_id,
@@ -479,23 +488,89 @@ where
 
                                             tracing::debug!("observation: {observation}");
 
+                                            current_iteration_steps
+                                                .push((action.clone(), observation.clone()));
                                             steps.push((action, observation));
                                         }
+
+                                        if !accumulated_content.is_empty() {
+                                            if let Some(memory) = &memory {
+                                                let mut memory = memory.lock().await;
+                                                memory.add_ai_message(&accumulated_content);
+                                            }
+                                        }
+
+                                        if let Some(memory) = &memory {
+                                            let mut memory = memory.lock().await;
+                                            let mut tools_ai_message_seen: HashMap<String, ()> =
+                                                HashMap::default();
+
+                                            for (action, observation) in &current_iteration_steps {
+                                                match serde_json::from_str::<LogTools>(&action.log)
+                                                {
+                                                    Ok(LogTools { tool_id, tools }) => {
+                                                        match serde_json::from_str::<Value>(&tools)
+                                                        {
+                                                            Ok(tools_value) => {
+                                                                if tools_ai_message_seen
+                                                                    .insert(tools, ())
+                                                                    .is_none()
+                                                                {
+                                                                    memory.add_message(
+                                                                        Message::new_ai_message("")
+                                                                            .with_tool_calls(
+                                                                                tools_value,
+                                                                            ),
+                                                                    );
+                                                                }
+                                                                memory.add_message(
+                                                                    Message::new_tool_message(
+                                                                        observation.clone(),
+                                                                        tool_id,
+                                                                    ),
+                                                                );
+                                                            }
+                                                            Err(e) => {
+                                                                tracing::warn!(
+                                                                    "Failed to parse tools JSON: {}",
+                                                                    e
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        tracing::warn!(
+                                                            "Failed to parse action log: {}",
+                                                            e
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+
                                         break;
                                     }
                                     AgentEvent::Finish(finish) => {
                                         if let Some(memory) = &memory {
                                             let mut memory = memory.lock().await;
-                                            memory.add_user_message(
-                                                match &input_variables["input"] {
-                                                    Value::String(s) => s,
-                                                    x => x,
-                                                },
-                                            );
+
+                                            if steps.is_empty()
+                                                && current_iteration_steps.is_empty()
+                                            {
+                                                memory.add_user_message(
+                                                    match &input_variables["input"] {
+                                                        Value::String(s) => s,
+                                                        x => x,
+                                                    },
+                                                );
+                                            }
+
+                                            if !accumulated_content.is_empty() {
+                                                memory.add_ai_message(&accumulated_content);
+                                            }
 
                                             let mut tools_ai_message_seen: HashMap<String, ()> =
                                                 HashMap::default();
-
                                             for (action, observation) in &steps {
                                                 match serde_json::from_str::<LogTools>(&action.log)
                                                 {
@@ -575,6 +650,13 @@ where
                             return;
                         }
                     }
+                }
+
+                if let Some(memory) = &memory {
+                    let memory = memory.lock().await;
+                    let messages = memory.messages();
+                    input_variables.insert("chat_history".to_string(), json!(messages));
+                    println!("history: {:?}", messages);
                 }
 
                 // Check max iterations before continuing
