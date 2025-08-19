@@ -85,12 +85,15 @@ impl OpenAIMcpAgentBuilder {
 
         let prompt = OpenAIMcpAgent::create_prompt(&prefix);
         let default_options = ChainCallOptions::default().with_max_tokens(1000);
-        let functions = tools
-            .iter()
-            .map(FunctionDefinition::from_langchain_tool)
-            .collect::<Vec<FunctionDefinition>>();
 
-        llm.add_options(CallOptions::new().with_functions(functions));
+        if !tools.is_empty() {
+            let functions = tools
+                .iter()
+                .map(FunctionDefinition::from_langchain_tool)
+                .collect::<Vec<FunctionDefinition>>();
+
+            llm.add_options(CallOptions::new().with_functions(functions));
+        }
 
         let chain = Box::new(
             LLMChainBuilder::new()
