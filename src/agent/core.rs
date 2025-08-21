@@ -68,17 +68,17 @@ impl OpenAIMcpAgent {
         };
 
         // Handle tool calls
-        if let Some(_tool_calls) = delta.get("tool_calls").and_then(|tc| tc.as_array()) {
-            *has_tool_calls = true;
-            let tool_call_chunk = tool_call_acc.accumulate(delta);
-            events.push(AgentEventChunk::Delta(DeltaEvent::Action(tool_call_chunk)));
-        } else if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
+        if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
             if !content.is_empty() {
                 model_output.push_str(content);
                 events.push(AgentEventChunk::Delta(DeltaEvent::Content(
                     content.to_string(),
                 )));
             }
+        } else if let Some(_tool_calls) = delta.get("tool_calls").and_then(|tc| tc.as_array()) {
+            *has_tool_calls = true;
+            let tool_call_chunk = tool_call_acc.accumulate(delta);
+            events.push(AgentEventChunk::Delta(DeltaEvent::Action(tool_call_chunk)));
         }
 
         // Handle finish reason
