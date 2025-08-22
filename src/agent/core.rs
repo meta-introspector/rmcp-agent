@@ -296,12 +296,18 @@ impl ToolCallAccumulator {
     }
 
     fn to_action_chunk(&self, args_chunk: String) -> AgentAction {
+        let processed_args = if args_chunk.trim().is_empty() {
+            "{}".to_string()
+        } else {
+            args_chunk
+        };
+
         let function_call_response = serde_json::json!({
             "id": self.id.clone(),
             "type": "function",
             "function": {
                 "name": self.name.clone(),
-                "arguments": args_chunk
+                "arguments": processed_args
             }
         });
 
@@ -326,7 +332,7 @@ impl ToolCallAccumulator {
 
         AgentAction {
             tool: self.name.clone().unwrap_or_default(),
-            tool_input: args_chunk,
+            tool_input: processed_args,
             log: log_str,
         }
     }

@@ -455,11 +455,17 @@ where
                                                     }
                                                 };
 
-                                            let parsed =
-                                                match serde_json::from_str::<Value>(&observation) {
-                                                    Ok(json_result) => json_result,
-                                                    Err(_) => Value::String(observation.clone()),
-                                                };
+                                            let parsed = match serde_json::from_str::<Value>(
+                                                &observation,
+                                            ) {
+                                                Ok(json_result) => json_result,
+                                                Err(e) => {
+                                                    tracing::warn!(
+                                                        "got error in parsing resp: {e:?}, raw: {observation}"
+                                                    );
+                                                    Value::String(observation.clone())
+                                                }
+                                            };
 
                                             let delta = json!({
                                                 "content": null,
