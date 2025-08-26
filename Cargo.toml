@@ -1,6 +1,6 @@
 [package]
 name = "rmcp-agent"
-version = "0.1.5"
+version = "0.1.6"
 description = "A library that extends langchain-rust with support for Model Context Protocol (MCP) tool integration and streaming tool execution capabilities."
 authors = ["bee0_0@icloud.com"]
 edition = "2024"
