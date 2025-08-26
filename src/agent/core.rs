@@ -248,8 +248,6 @@ impl AgentExt for OpenAIMcpAgent {
                     }
                 };
 
-                println!("chunk: {chunk:?}");
-
                 // Process chunk and get events
                 let events = Self::process_chunk_delta(&chunk.value, &mut model_output, &mut tool_call_acc, &mut has_tool_calls);
 
