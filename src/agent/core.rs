@@ -40,11 +40,38 @@ impl OpenAIMcpAgent {
     ) -> Result<Vec<Message>, AgentError> {
         let mut thoughts: Vec<Message> = vec![];
 
-        for step in intermediate_steps {
-            step.append_to_conversation(&mut thoughts)?;
+        const MAX_STEPS: usize = 5;
+        const SUMMARY_THRESHOLD: usize = 10;
+
+        if intermediate_steps.len() > SUMMARY_THRESHOLD {
+            let summary_msg = self.create_summary_message(
+                &intermediate_steps[..intermediate_steps.len() - MAX_STEPS],
+            )?;
+            thoughts.push(summary_msg);
+
+            for step in &intermediate_steps[intermediate_steps.len() - MAX_STEPS..] {
+                step.append_to_conversation(&mut thoughts)?;
+            }
+        } else {
+            for step in intermediate_steps {
+                step.append_to_conversation(&mut thoughts)?;
+            }
         }
 
         Ok(thoughts)
+    }
+
+    fn create_summary_message(
+        &self,
+        old_steps: &[impl IntermediateStep],
+    ) -> Result<Message, AgentError> {
+        let summary = format!(
+            "Previous {} steps summary: [Summarized execution history with {} actions completed]",
+            old_steps.len(),
+            old_steps.len()
+        );
+
+        Ok(Message::new_system_message(&summary))
     }
 
     fn process_chunk_delta(
@@ -220,6 +247,8 @@ impl AgentExt for OpenAIMcpAgent {
                         return;
                     }
                 };
+
+                println!("chunk: {chunk:?}");
 
                 // Process chunk and get events
                 let events = Self::process_chunk_delta(&chunk.value, &mut model_output, &mut tool_call_acc, &mut has_tool_calls);
